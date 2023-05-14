@@ -33,6 +33,12 @@ variable "ssh_key_path" {
   description = "Path of the private key to ssh to the nodes"
 }
 
+variable "ssh_keypair_name" {
+  default = "rke2"
+  type = string
+  description = "AWS keypair name"
+}
+
 variable "extra_ssh_keys" {
   type        = list
   default     = []
@@ -60,6 +66,10 @@ variable "domain_name" {
 
 variable "zone_id" {
   description = "route53 zone id to register the domain name"
+}
+
+variable "vpc_id" {
+  description = "VPC ID"
 }
 
 variable "name" {}

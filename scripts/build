@@ -24,7 +24,7 @@ fi
 
 TERRAFORM_PLAN_CMD="terraform plan --var-file variables.tfvars --out rke2.plan"
 TERRAFORM_APPLY_CMD="terraform apply rke2.plan"
-TERRAFORM_DESTROY_CMD="terraform destroy --var-file variables.tfvars --force"
+TERRAFORM_DESTROY_CMD="terraform destroy --var-file variables.tfvars"
 
 
 for bin in kubectl terraform; do
@@ -72,10 +72,12 @@ server_ha = ${SERVER_HA}
 rke2_server_args = "${RKE2_SERVER_ARGS}"
 rke2_agent_args = "${RKE2_AGENT_ARGS}"
 rke2_version = "${RKE2_VERSION}"
+ssh_keypair_name = "${SSH_KEYPAIR_NAME}"
 ssh_key_path = "${EXPANDED_PRIV_KEY_PATH}"
 debug = ${DEBUG}
-domain_name = "${NAME}.eng.rancher.space"
+domain_name = "${DOMAIN_NAME}"
 zone_id = "${ZONE_ID}"
+vpc_id = "${VPC_ID}"
 agent_node_count = "${AGENT_COUNT}"
 agent_instance_type = "${AGENT_INSTANCE_TYPE}"
 aws_profile = "${AWS_PROFILE}"

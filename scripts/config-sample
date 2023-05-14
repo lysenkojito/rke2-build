@@ -1,0 +1,24 @@
+## MAIN VARIABLES ##
+####################
+AWS_PROFILE="default"
+CLUSTER_SECRET=""
+ZONE_ID=""
+RKE2_VERSION="v1.24.13+rke2r1"
+EXTRA_SSH_KEYS="~/Downloads/rancher.pem" # comma separated public keys
+PRIVATE_KEY_PATH="~/Downloads/rancher.pem"
+EXPANDED_PRIV_KEY_PATH="~/Downloads/rancher.pem" #path to local key
+SSH_KEYPAIR_NAME="rancher"
+DEBUG=1
+VPC_ID=""
+DOMAIN_NAME=""
+
+## K3S SERVER VARIABLES ##
+##########################
+SERVER_HA=1
+SERVER_COUNT=3
+SERVER_INSTANCE_TYPE="t2.medium"
+
+## RKE2 AGENT VARIABLES ##
+##########################
+AGENT_COUNT=1
+AGENT_INSTANCE_TYPE="t2.medium"

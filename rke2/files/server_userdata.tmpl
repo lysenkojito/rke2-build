@@ -14,6 +14,7 @@ runcmd:
 - systemctl restart systemd-journald.service
 - systemctl start resolvconf
 - /opt/rke2/run_rke2.sh
+- export PATH=$PATH:/var/lib/rancher/rke2/bin
 write_files:
 - path: /etc/rancher/rke2/config.yaml
   permissions: "0600"
@@ -22,7 +23,9 @@ write_files:
     %{ if master_index != 0 }
     server: https://${lb_address}:9345
     %{ endif }
-    tls-san: ${lb_address}
+    tls-san: 
+      - ${lb_address}
+      - ${domain_name}
     token: ${rke2_cluster_secret}
 - path: /opt/rke2/run_rke2.sh
   permissions: "0755"

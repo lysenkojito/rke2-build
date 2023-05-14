@@ -2,6 +2,12 @@ terraform {
   backend "local" {
     path = "server.tfstate"
   }
+    required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.67.0"
+    }
+  }
 }
 
 locals {
@@ -17,7 +23,7 @@ provider "aws" {
 
 resource "aws_security_group" "rke2-all-open" {
   name   = "${local.name}-sg"
-  vpc_id = data.aws_vpc.default.id
+  vpc_id = data.aws_vpc.rke2-vpc.id
 
   ingress {
     from_port = 0
@@ -38,7 +44,7 @@ resource "aws_lb" "rke2-master-nlb" {
   name               = "${local.name}-nlb"
   internal           = false
   load_balancer_type = "network"
-  subnets = data.aws_subnet_ids.available.ids
+  subnets = data.aws_subnet_ids.rke2-subnet-ids.ids
 }
 
 resource "aws_route53_record" "www" {
@@ -51,12 +57,11 @@ resource "aws_route53_record" "www" {
    records = ["${aws_lb.rke2-master-nlb.dns_name}"]
 }
 
-
 resource "aws_lb_target_group" "rke2-master-nlb-tg" {
   name     = "${local.name}-nlb-tg"
   port     = "6443"
   protocol = "TCP"
-  vpc_id   = data.aws_vpc.default.id
+  vpc_id   = data.aws_vpc.rke2-vpc.id
   deregistration_delay = "300"
   health_check {
     interval = "30"
@@ -81,7 +86,7 @@ resource "aws_lb_target_group" "rke2-master-supervisor-nlb-tg" {
   name     = "${local.name}-nlb-supervisor-tg"
   port     = "9345"
   protocol = "TCP"
-  vpc_id   = data.aws_vpc.default.id
+  vpc_id   = data.aws_vpc.rke2-vpc.id
   deregistration_delay = "300"
   health_check {
     interval = "30"
@@ -120,6 +125,7 @@ resource "aws_instance" "rke2-server" {
   count = var.server_count
   instance_type = var.server_instance_type
   ami           = data.aws_ami.ubuntu.id
+  key_name      = var.ssh_keypair_name
   user_data     = base64encode(templatefile("${path.module}/files/server_userdata.tmpl",
   {
     extra_ssh_keys = var.extra_ssh_keys,
@@ -131,15 +137,15 @@ resource "aws_instance" "rke2-server" {
     master_index = count.index,
     rke2_arch = var.rke2_arch,
     debug = var.debug,}))
-  security_groups = [
-    aws_security_group.rke2-all-open.name,
+  vpc_security_group_ids = [
+    aws_security_group.rke2-all-open.id,
   ]
 
-   root_block_device {
+  root_block_device {
     volume_size = "30"
     volume_type = "gp2"
   }
-   tags = {
+  tags = {
     Name = "${local.name}-server-${count.index}"
     Role = "master"
     Leader = "${count.index == 0 ? "true" : "false"}"
@@ -147,15 +153,22 @@ resource "aws_instance" "rke2-server" {
   provisioner "local-exec" {
       command = "sleep 10"
   }
+  subnet_id = tolist(data.aws_subnet_ids.rke2-subnet-ids.ids)[count.index]
 }
 
 module "rke2-pool-agent-asg" {
   source        = "terraform-aws-modules/autoscaling/aws"
-  version       = "3.0.0"
+  version       = "6.9.0"
   name          = "${local.name}-pool"
-  asg_name      = "${local.name}-pool"
   instance_type = var.agent_instance_type
-  image_id      = data.aws_ami.ubuntu.id
+  image_id      = data.aws_ami.ubuntu.id  
+  max_size            = var.agent_node_count
+  min_size            = var.agent_node_count
+  vpc_zone_identifier = data.aws_subnet_ids.rke2-subnet-ids.ids
+  security_groups = [
+    aws_security_group.rke2-all-open.id,
+  ]
+  
   user_data     = base64encode(templatefile("${path.module}/files/agent_userdata.tmpl",
   {
     rke2_url = aws_lb.rke2-master-nlb.dns_name,
@@ -166,37 +179,27 @@ module "rke2-pool-agent-asg" {
     lb_address = var.domain_name,
     rke2_arch = var.rke2_arch
     debug = var.debug,}))
- 
-  ebs_optimized = true
-
-  default_cooldown          = 10
-  health_check_grace_period = 30
-  wait_for_capacity_timeout = "60m"
 
   desired_capacity    = var.agent_node_count
   health_check_type   = "EC2"
-  max_size            = var.agent_node_count
-  min_size            = var.agent_node_count
-  vpc_zone_identifier = [data.aws_subnet.selected.id]
-  spot_price          = "0.680"
 
-  security_groups = [
-    aws_security_group.rke2-all-open.id,
-  ]
-  lc_name = "${local.name}-pool"
-
-  root_block_device = [
+  block_device_mappings = [
     {
-      volume_size = "30"
-      volume_type = "gp2"
-    },
+      device_name = "/dev/xvda"
+      no_device   = 0
+      ebs = {
+        delete_on_termination = true
+        encrypted             = true
+        volume_size           = 30
+        volume_type           = "gp2"
+      }
+    }
   ]
 }
 
 resource "null_resource" "get-kubeconfig" {
   provisioner "local-exec" {
     interpreter = ["bash", "-c"]
-    command     = "until ssh -o 'UserKnownHostsFile=/dev/null' -o 'StrictHostKeyChecking=no' -i ${var.ssh_key_path} ubuntu@${aws_instance.rke2-server[0].public_ip} 'sudo sed \"s/localhost/$var.domain_name}/g;s/127.0.0.1/${var.domain_name}/g\" /etc/rancher/rke2/rke2.yaml' >| ./kubeconfig.yaml; do sleep 5; done"
+    command     = "until ssh -o 'UserKnownHostsFile=/dev/null' -o 'StrictHostKeyChecking=no' -i ${var.ssh_key_path} ubuntu@${aws_instance.rke2-server[0].public_ip} 'sudo sed \"s/localhost/${var.domain_name}/g;s/127.0.0.1/${var.domain_name}/g\" /etc/rancher/rke2/rke2.yaml' >| ./kubeconfig.yaml; do sleep 5; done"
   }
 }
-

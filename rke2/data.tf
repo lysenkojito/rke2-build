@@ -1,13 +1,9 @@
-data "aws_vpc" "default" {
-  default = true
+data "aws_vpc" "rke2-vpc" {
+  id = var.vpc_id
 }
 
-data "aws_subnet_ids" "available" {
-  vpc_id = data.aws_vpc.default.id
-}
-
-data "aws_subnet" "selected" {
-  id = "${tolist(data.aws_subnet_ids.available.ids)[1]}"
+data "aws_subnet_ids" "rke2-subnet-ids" {
+  vpc_id = data.aws_vpc.rke2-vpc.id
 }
 
 data "aws_ami" "ubuntu" {
